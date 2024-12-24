@@ -1,0 +1,125 @@
+# .github/workflows/microservice-ci.yml
+name: Microservice CI Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to build and deploy'
+        required: true
+        type: choice
+        options:
+          - adservice
+          - cartservice
+          - checkoutservice
+          - currencyservice
+          - emailservice
+          - frontend
+          - loadgenerator
+          - paymentservice
+          - productcatalogservice
+          - recommendationservice
+          - shippingservice
+          - shoppingassistantservice
+  push:
+    paths:
+      - 'src/adservice/**'
+      - 'src/cartservice/**'
+      - 'src/checkoutservice/**'
+      - 'src/currencyservice/**'
+      - 'src/emailservice/**'
+      - 'src/frontend/**'
+      - 'src/loadgenerator/**'
+      - 'src/paymentservice/**'
+      - 'src/productcatalogservice/**'
+      - 'src/recommendationservice/**'
+      - 'src/shippingservice/**'
+      - 'src/shoppingassistantservice/**'
+
+jobs:
+  detect-service:
+    runs-on: ubuntu-latest
+    outputs:
+      service: ${{ steps.set-service.outputs.service }}
+    steps:
+      - name: Determine changed service
+        id: set-service
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "service=${{ github.event.inputs.service }}" >> $GITHUB_OUTPUT
+          else
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
+            SERVICE=$(echo "$CHANGED_FILES" | grep -o "src/[^/]*" | head -n1 | cut -d'/' -f2)
+            echo "service=$SERVICE" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-push:
+    needs: detect-service
+    runs-on: ubuntu-latest
+    env:
+      SERVICE: ${{ needs.detect-service.outputs.service }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set build context
+        id: set-context
+        run: |
+          if [ "${{ env.SERVICE }}" = "cartservice" ]; then
+            echo "context=./src/cartservice/src" >> $GITHUB_OUTPUT
+          else
+            echo "context=./src/${{ env.SERVICE }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate image tags
+        id: meta
+        run: |
+          SHA_TAG="${{ github.sha }}"
+          SHORT_SHA="${SHA_TAG:0:7}"
+          echo "sha_tag=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "tags=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:latest,${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export to Docker
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.set-context.outputs.context }}
+          load: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:${{ steps.meta.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:${{ steps.meta.outputs.sha_tag }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Push image to Docker Hub
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.set-context.outputs.context }}
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:${{ steps.meta.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Output Image Tags
+        run: |
+          echo "Successfully pushed images:"
+          echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:latest"
+          echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE }}:${{ steps.meta.outputs.sha_tag }}"
