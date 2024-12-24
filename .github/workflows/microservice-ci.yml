@@ -1,4 +1,3 @@
-# .github/workflows/microservice-ci.yml
 name: Microservice CI Pipeline
 
 on:
@@ -22,6 +21,8 @@ on:
           - shippingservice
           - shoppingassistantservice
   push:
+    branches:
+      - main
     paths:
       - 'src/adservice/**'
       - 'src/cartservice/**'
