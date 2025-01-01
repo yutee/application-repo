@@ -115,7 +115,7 @@ jobs:
         with:
           image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.service }}:${{ steps.meta.outputs.sha_tag }}'
           format: 'table'
-          exit-code: '0'
+          exit-code: '0' # set to '1' in production or if you want pipeline to fail
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
