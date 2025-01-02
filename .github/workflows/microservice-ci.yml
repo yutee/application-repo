@@ -136,3 +136,34 @@ jobs:
           echo "Successfully pushed images for ${{ matrix.service }}:"
           echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.service }}:latest"
           echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.service }}:${{ steps.meta.outputs.sha_tag }}"
+
+  update-helm-chart:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout k8s-manifests-repo
+        uses: actions/checkout@v4
+        with:
+          repository: yutee/k8s-manifests-repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: manifests-repo
+
+      - name: Update Helm values.yaml with sed
+        working-directory: manifests-repo/boutique-app
+        run: |
+          IMAGE_TAG="${{ steps.meta.outputs.sha_tag }}"
+
+          # Update the tag field in values.yaml
+          sed -i "s/tag: .*/tag: $IMAGE_TAG/" values.yaml
+
+          echo "Updated values.yaml:"
+          cat values.yaml
+
+      - name: Commit and Push Changes
+        working-directory: manifests-repo
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add boutique-app/values.yaml
+          git commit -m "Update image tag to ${{ steps.meta.outputs.sha_tag }}"
+          git push origin main
