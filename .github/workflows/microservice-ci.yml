@@ -145,7 +145,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: yutee/k8s-manifests-repo
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           path: manifests-repo
 
       - name: Update Helm values.yaml with sed
@@ -159,12 +159,12 @@ jobs:
           echo "Updated values.yaml:"
           cat values.yaml
 
-          - name: Commit and Push Changes
-          working-directory: manifests-repo
-          env:
-            PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-          run: |
-            git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/yutee/k8s-manifests-repo.git
-            git add boutique-app/values.yaml
-            git commit -m "Update image tag to ${{ steps.meta.outputs.sha_tag }}"
-            git push origin main
+      - name: Commit and Push Changes
+        working-directory: manifests-repo
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/yutee/k8s-manifests-repo.git
+          git add boutique-app/values.yaml
+          git commit -m "Update image tag to ${{ steps.meta.outputs.sha_tag }}"
+          git push origin main
